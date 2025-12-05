@@ -12,6 +12,9 @@ const JWT_SECRET = "1234";
 app.use(cors({ origin: "*", credentials: true }));
 app.use(express.json());
 
+
+
+
 // ===================== BASE DE DATOS (POOL) =====================
 const db = mysql.createPool({
     host: "mysql-base1cine.alwaysdata.net",
@@ -24,6 +27,8 @@ const db = mysql.createPool({
 });
 
 // SOLO ESTO: ya NO uses db.connect()
+
+
 
 // ===================== FUNCIÓN PARA VERIFICAR TOKEN =====================
 const verificarToken = (req, res, next) => {
@@ -41,6 +46,10 @@ const verificarToken = (req, res, next) => {
         return res.status(401).json({ success: false, msg: "Token inválido" });
     }
 };
+
+
+
+
 
 // ===================== REGISTRO =====================
 app.post("/registro", async (req, res) => {
@@ -104,28 +113,6 @@ app.post("/login", (req, res) => {
             usuario,
             token
         });
-    });
-});
-
-
-
-
-// ===================== USUARIO LOGUEADO =====================
-app.get("/usuario_logueado", verificarToken, (req, res) => {
-    res.json({ success: true, usuario: req.usuario });
-});
-
-
-
-// ===================== SUBIR IMAGEN PERFIL =====================
-app.post("/subir_imagen", verificarToken, upload.single("imagen"), (req, res) => {
-    const imagen = req.file.filename;
-
-    const query = "UPDATE Usuario SET Imagen = ? WHERE Id_usuario = ?";
-    db.query(query, [imagen, req.usuario.Id_usuario], err => {
-        if (err) return res.status(500).json({ success: false });
-
-        res.json({ success: true, imagen });
     });
 });
 
