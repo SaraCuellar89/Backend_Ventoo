@@ -19,21 +19,8 @@ app.use(cors({
     credentials: false
 }));
 
-app.use("/uploads", express.static("uploads"));
+
 app.use(express.json());
-
-
-
-
-
-// ===================== MULTER =====================
-const storage = multer.diskStorage({
-    destination: "./uploads",
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname));
-    }
-});
-const upload = multer({ storage });
 
 
 
