@@ -50,7 +50,7 @@ app.post("/registro", async (req, res) => {
         const hash = await bcrypt.hash(contrasena, 10);
 
         const sql = `
-            INSERT INTO usuarios (Nombre, Email, Telefono, Contrasena, Rol)
+            INSERT INTO usuario (Nombre, Email, Telefono, Contrasena, Rol)
             VALUES (?, ?, ?, ?, ?)
         `;
 
@@ -73,7 +73,7 @@ app.post("/registro", async (req, res) => {
 app.post("/login", (req, res) => {
     const { email, contrasena } = req.body;
 
-    const sql = `SELECT * FROM usuarios WHERE Email = ?`;
+    const sql = `SELECT * FROM usuario WHERE Email = ?`;
 
     db.query(sql, [email], async (err, result) => {
         if (err) {
@@ -110,7 +110,7 @@ app.post("/login", (req, res) => {
 
 // ===================== USUARIO LOGUEADO =====================
 app.get("/usuario_logueado", verificarToken, (req, res) => {
-    const sql = `SELECT Id_usuario, Nombre, Email, Rol FROM usuarios WHERE Id_usuario = ?`;
+    const sql = `SELECT Id_usuario, Nombre, Email, Rol FROM usuario WHERE Id_usuario = ?`;
 
     db.query(sql, [req.usuario.Id_usuario], (err, result) => {
         if (err) {
