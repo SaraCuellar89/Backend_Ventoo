@@ -130,10 +130,7 @@ app.get("/productos", (req, res) => {
     db.query(query, (err, results) => {
         if (err) return res.status(500).json({ success: false });
 
-        const productos = results.map(p => ({
-            ...p,
-            Imagen: normalizarImagen(p.Imagen)
-        }));
+        const productos = results.map(p => p);
 
         res.json({ success: true, productos });
     });
@@ -178,7 +175,6 @@ app.get("/producto_id/:id", verificarToken, (req, res) => {
         }
 
         const producto = results[0];
-        producto.Imagen = normalizarImagen(producto.Imagen);
 
         res.json({ success: true, producto });
     });
@@ -247,8 +243,6 @@ app.get("/producto/:id", (req, res) => {
             return res.json({ success: false, message: "Producto no encontrado" });
 
         const producto = result[0];
-        producto.Imagen = normalizarImagen(producto.Imagen);
-        producto.FotoVendedor = normalizarImagen(producto.FotoVendedor);
 
         const queryMas = `
             SELECT * FROM producto
@@ -258,9 +252,13 @@ app.get("/producto/:id", (req, res) => {
         `;
 
         db.query(queryMas, [producto.IdVendedor, id], (err2, mas) => {
+            if (err2) {
+                return res.json({ success: false, message: "Error al obtener más productos" });
+            }
+
             const productosNorm = mas.map(p => ({
                 ...p,
-                Imagen: normalizarImagen(p.Imagen)
+                Imagen: p.Imagen
             }));
 
             res.json({
@@ -285,7 +283,7 @@ app.get("/productos_vendedor", verificarToken, (req, res) => {
 
         const productos = results.map(p => ({
             ...p,
-            Imagen: normalizarImagen(p.Imagen)
+            Imagen: p.Imagen
         }));
 
         res.json({ success: true, productos });
@@ -536,8 +534,8 @@ app.post('/filtrar_categoria', (req, res) => {
 
         const query = `
             SELECT p.*, c.Nombre_categoria 
-            FROM Producto p
-            JOIN Categoria c ON p.Id_categoria = c.Id_categoria
+            FROM producto p
+            JOIN categoria c ON p.Id_categoria = c.Id_categoria
             WHERE p.Id_categoria = ?
         `;
 
@@ -572,8 +570,8 @@ app.post('/filtrar_precio', (req, res) => {
 
         const query = `
             SELECT p.*, c.Nombre_categoria
-            FROM Producto p
-            JOIN Categoria c ON p.Id_categoria = c.Id_categoria
+            FROM producto p
+            JOIN categoria c ON p.Id_categoria = c.Id_categoria
             ORDER BY p.Precio ${ordenSQL}
         `;
 
@@ -612,8 +610,8 @@ app.post('/buscar_nombre', (req, res) => {
 
         const query = `
             SELECT p.*, c.Nombre_categoria
-            FROM Producto p
-            JOIN Categoria c ON p.Id_categoria = c.Id_categoria
+            FROM producto p
+            JOIN categoria c ON p.Id_categoria = c.Id_categoria
             WHERE p.Nombre LIKE ?
         `;
 
