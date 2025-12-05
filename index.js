@@ -1,21 +1,21 @@
 const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql2");
-const multer = require("multer");
-const path = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
+// ===================== CONFIG =====================
+const JWT_SECRET = "1234";  // cámbialo en producción
 const app = express();
-const JWT_SECRET = "1234";
 
-app.use(cors({ origin: "*", credentials: true }));
+app.use(cors({
+    origin: "*",      // React Web + React Native
+    credentials: false
+}));
+
 app.use(express.json());
 
-
-
-
-// ===================== BASE DE DATOS (POOL) =====================
+// ===================== BD =====================
 const db = mysql.createPool({
     host: "mysql-base1cine.alwaysdata.net",
     user: "base1cine_admin",
@@ -26,50 +26,54 @@ const db = mysql.createPool({
     queueLimit: 0
 });
 
-// SOLO ESTO: ya NO uses db.connect()
-
-
-
-// ===================== FUNCIÓN PARA VERIFICAR TOKEN =====================
+// ===================== MIDDLEWARE JWT =====================
 const verificarToken = (req, res, next) => {
-    const token = req.headers["authorization"]?.split(" ")[1];
+    const authHeader = req.headers.authorization;
+    if (!authHeader)
+        return res.status(401).json({ success: false, message: "Token faltante" });
 
-    if (!token) {
-        return res.status(401).json({ success: false, msg: "Acceso denegado. Falta token." });
-    }
+    const token = authHeader.split(" ")[1];
 
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+        if (err)
+            return res.status(403).json({ success: false, message: "Token inválido o expirado" });
+
         req.usuario = decoded;
         next();
-    } catch (err) {
-        return res.status(401).json({ success: false, msg: "Token inválido" });
-    }
+    });
 };
-
-
-
-
 
 // ===================== REGISTRO =====================
 app.post("/registro", async (req, res) => {
     const { nombre, email, telefono, contrasena, rol } = req.body;
 
     try {
-        const hash = await bcrypt.hash(contrasena, 10);
-
-        const sql = `
-            INSERT INTO usuario (Nombre, Email, Telefono, Contrasena, Tipo_cliente)
-            VALUES (?, ?, ?, ?, ?)
-        `;
-
-        db.query(sql, [nombre, email, telefono, hash, rol], (err, result) => {
+        const checkEmailQuery = `SELECT * FROM usuario WHERE Email = ?`;
+        db.query(checkEmailQuery, [email], async (err, results) => {
             if (err) {
                 console.error("Error BD:", err);
                 return res.status(500).json({ success: false, msg: "Error en la BD" });
             }
 
-            res.json({ success: true, msg: "Usuario registrado" });
+            if (results.length > 0) {
+                return res.status(400).json({ success: false, msg: "El email ya está registrado" });
+            }
+
+            const hash = await bcrypt.hash(contrasena, 10);
+
+            const sql = `
+                INSERT INTO usuario (Nombre, Email, Telefono, Contrasena, Tipo_cliente)
+                VALUES (?, ?, ?, ?, ?)
+            `;
+
+            db.query(sql, [nombre, email, telefono, hash, rol], (err, result) => {
+                if (err) {
+                    console.error("Error BD:", err);
+                    return res.status(500).json({ success: false, msg: "Error en la BD" });
+                }
+
+                res.json({ success: true, msg: "Usuario registrado" });
+            });
         });
 
     } catch (error) {
@@ -78,13 +82,11 @@ app.post("/registro", async (req, res) => {
     }
 });
 
-
-
 // ===================== LOGIN =====================
 app.post("/login", (req, res) => {
     const { email, contrasena } = req.body;
 
-    db.query("SELECT * FROM Usuario WHERE Email = ?", [email], async (err, results) => {
+    db.query("SELECT * FROM usuario WHERE Email = ?", [email], async (err, results) => {
         if (err) return res.status(500).json({ error: "Error servidor" });
         if (results.length === 0) return res.status(401).json({ error: "Usuario no registrado" });
 
@@ -116,26 +118,14 @@ app.post("/login", (req, res) => {
     });
 });
 
-
-
-
-// ===================== NORMALIZAR IMAGEN =====================
-const normalizarImagen = (img) => {
-    if (!img) return "";
-    img = img.trim();
-
-    if (img.startsWith("http")) return img;
-    if (!img.includes("base64") && !img.startsWith("data:image"))
-        return `http://localhost:3001/uploads/${img}`;
-    return img;
-};
-
-
-
+// ===================== USUARIO LOGUEADO =====================
+app.get("/usuario_logueado", verificarToken, (req, res) => {
+    res.json({ success: true, usuario: req.usuario });
+});
 
 // ===================== PRODUCTOS =====================
 app.get("/productos", (req, res) => {
-    const query = "SELECT * FROM Producto ORDER BY Fecha_publicacion DESC";
+    const query = "SELECT * FROM producto ORDER BY Fecha_publicacion DESC";
 
     db.query(query, (err, results) => {
         if (err) return res.status(500).json({ success: false });
@@ -149,15 +139,12 @@ app.get("/productos", (req, res) => {
     });
 });
 
-
-
-
 // ===================== REGISTRAR PRODUCTO =====================
 app.post("/registrar_producto", verificarToken, (req, res) => {
     const { titulo, descripcion, precio, imagen, categoria } = req.body;
 
     const query = `
-        INSERT INTO Producto (Nombre, Descripcion, Precio, Imagen, Fecha_publicacion, Id_categoria, Id_usuario)
+        INSERT INTO producto (Nombre, Descripcion, Precio, Imagen, Fecha_publicacion, Id_categoria, Id_usuario)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
@@ -174,17 +161,13 @@ app.post("/registrar_producto", verificarToken, (req, res) => {
     );
 });
 
-
-
-
 // ===================== PRODUCTO EDITAR =====================
 app.get("/producto_id/:id", verificarToken, (req, res) => {
-
     const idProducto = req.params.id;
 
     const query = `
         SELECT * 
-        FROM Producto
+        FROM producto
         WHERE Id_producto = ? AND Id_usuario = ?
         LIMIT 1
     `;
@@ -201,16 +184,13 @@ app.get("/producto_id/:id", verificarToken, (req, res) => {
     });
 });
 
-
-
-
 // ===================== EDITAR PRODUCTO =====================
 app.put("/editar_producto/:id", verificarToken, (req, res) => {
     const idProducto = req.params.id;
     const { titulo, descripcion, precio, imagen } = req.body;
 
     const query = `
-        UPDATE Producto 
+        UPDATE producto 
         SET Nombre = ?, Descripcion = ?, Precio = ?, Imagen = ?
         WHERE Id_producto = ?
     `;
@@ -222,19 +202,15 @@ app.put("/editar_producto/:id", verificarToken, (req, res) => {
     });
 });
 
-
-
 // ===================== ELIMINAR PRODUCTO =====================
 app.delete("/eliminar_producto/:id", verificarToken, (req, res) => {
-    
     const idProducto = req.params.id;
 
     const query = `
-        DELETE FROM Producto
+        DELETE FROM producto
         WHERE Id_producto = ? AND Id_usuario = ?
     `;
 
-    // Solo el vendedor que creó el producto puede eliminarlo
     db.query(query, [idProducto, req.usuario.Id_usuario], (err, result) => {
         if (err) return res.status(500).json({ success: false, message: "Error al eliminar producto" });
 
@@ -246,11 +222,9 @@ app.delete("/eliminar_producto/:id", verificarToken, (req, res) => {
     });
 });
 
-
-
 // ===================== CATEGORIAS =====================
 app.get("/categorias", (req, res) => {
-    db.query("SELECT * FROM Categoria ORDER BY Nombre_categoria", (err, results) => {
+    db.query("SELECT * FROM categoria ORDER BY Nombre_categoria", (err, results) => {
         if (err) return res.status(500).json({ success: false });
         res.json({ success: true, categorias: results });
     });
@@ -262,8 +236,8 @@ app.get("/producto/:id", (req, res) => {
 
     const queryProducto = `
         SELECT p.*, u.Id_usuario AS IdVendedor, u.Nombre AS NombreVendedor, u.Imagen AS FotoVendedor
-        FROM Producto p
-        LEFT JOIN Usuario u ON u.Id_usuario = p.Id_usuario
+        FROM producto p
+        LEFT JOIN usuario u ON u.Id_usuario = p.Id_usuario
         WHERE p.Id_producto = ?
         LIMIT 1
     `;
@@ -277,7 +251,7 @@ app.get("/producto/:id", (req, res) => {
         producto.FotoVendedor = normalizarImagen(producto.FotoVendedor);
 
         const queryMas = `
-            SELECT * FROM Producto
+            SELECT * FROM producto
             WHERE Id_usuario = ? AND Id_producto != ?
             ORDER BY Fecha_publicacion DESC
             LIMIT 4
@@ -300,9 +274,8 @@ app.get("/producto/:id", (req, res) => {
 
 // ===================== PRODUCTOS DEL VENDEDOR =====================
 app.get("/productos_vendedor", verificarToken, (req, res) => {
-
     const query = `
-        SELECT * FROM Producto
+        SELECT * FROM producto
         WHERE Id_usuario = ?
         ORDER BY Fecha_publicacion DESC
     `;
@@ -326,17 +299,14 @@ app.post("/carrito/agregar", verificarToken, (req, res) => {
 
     const fecha = new Date().toISOString().slice(0, 10);
 
-    const buscar = `
-        SELECT * FROM Carrito
-        WHERE Id_usuario = ? AND Id_producto = ?
-    `;
+    const buscar = `SELECT * FROM carrito WHERE Id_usuario = ? AND Id_producto = ?`;
 
     db.query(buscar, [Id_usuario, Id_producto], (err, result) => {
         if (err) return res.json({ success: false });
 
         if (result.length > 0) {
             const actualizar = `
-                UPDATE Carrito
+                UPDATE carrito
                 SET Cantidad = Cantidad + ?
                 WHERE Id_usuario = ? AND Id_producto = ?
             `;
@@ -345,7 +315,7 @@ app.post("/carrito/agregar", verificarToken, (req, res) => {
         }
 
         const insertar = `
-            INSERT INTO Carrito (Id_usuario, Id_producto, Fecha_agregado, Cantidad)
+            INSERT INTO carrito (Id_usuario, Id_producto, Fecha_agregado, Cantidad)
             VALUES (?, ?, ?, ?)
         `;
 
@@ -356,12 +326,11 @@ app.post("/carrito/agregar", verificarToken, (req, res) => {
 
 // ===================== OBTENER CARRITO =====================
 app.get("/carrito", verificarToken, (req, res) => {
-
     const query = `
         SELECT c.Cantidad,
                p.Id_producto, p.Nombre, p.Precio, p.Imagen, p.Descripcion
-        FROM Carrito c
-        INNER JOIN Producto p ON p.Id_producto = c.Id_producto
+        FROM carrito c
+        INNER JOIN producto p ON p.Id_producto = c.Id_producto
         WHERE c.Id_usuario = ?
     `;
 
@@ -373,8 +342,7 @@ app.get("/carrito", verificarToken, (req, res) => {
 
 // ===================== VACIAR CARRITO =====================
 app.delete("/vaciar_carrito", verificarToken, (req, res) => {
-
-    const sql = `DELETE FROM Carrito WHERE Id_usuario = ?`;
+    const sql = `DELETE FROM carrito WHERE Id_usuario = ?`;
 
     db.query(sql, [req.usuario.Id_usuario], (err) => {
         if (err) return res.status(500).json({ success: false });
@@ -384,10 +352,7 @@ app.delete("/vaciar_carrito", verificarToken, (req, res) => {
 
 // ===================== ELIMINAR PRODUCTO DEL CARRITO =====================
 app.delete("/carrito/eliminar/:idProducto", verificarToken, (req, res) => {
-    const sql = `
-        DELETE FROM Carrito
-        WHERE Id_usuario = ? AND Id_producto = ?
-    `;
+    const sql = `DELETE FROM carrito WHERE Id_usuario = ? AND Id_producto = ?`;
 
     db.query(sql, [req.usuario.Id_usuario, req.params.idProducto], (err) => {
         if (err) return res.json({ success: false });
@@ -407,7 +372,7 @@ app.post("/crear_pedido", verificarToken, (req, res) => {
     const fecha = new Date().toISOString().slice(0, 10);
 
     const sqlPedido = `
-        INSERT INTO Pedido (Direccion_envio, Fecha_pedido, Metodo_pago, Estado_pedido, Total, Id_usuario)
+        INSERT INTO pedido (Direccion_envio, Fecha_pedido, Metodo_pago, Estado_pedido, Total, Id_usuario)
         VALUES (?, ?, ?, 'Pendiente', ?, ?)
     `;
 
@@ -419,9 +384,8 @@ app.post("/crear_pedido", verificarToken, (req, res) => {
 
         const idPedido = result.insertId;
 
-        // ========= Insertar detalles del pedido ==========
         const sqlDetalle = `
-            INSERT INTO Pedido_Detalle (Id_pedido, Id_producto, Cantidad, Precio)
+            INSERT INTO pedido_detalle (Id_pedido, Id_producto, Cantidad, Precio)
             VALUES ?
         `;
 
@@ -449,10 +413,9 @@ app.post("/crear_pedido", verificarToken, (req, res) => {
 
 // ===================== PEDIDOS CLIENTE =====================
 app.get("/pedidos_cliente", verificarToken, (req, res) => {
-
     const sql = `
         SELECT Id_pedido, Fecha_pedido, Total, Estado_pedido
-        FROM Pedido
+        FROM pedido
         WHERE Id_usuario = ?
         ORDER BY Fecha_pedido DESC
     `;
@@ -467,10 +430,7 @@ app.get("/pedidos_cliente", verificarToken, (req, res) => {
 app.get("/pedido/:idPedido", verificarToken, (req, res) => {
     const idPedido = req.params.idPedido;
 
-    const sqlPedido = `
-        SELECT * FROM Pedido 
-        WHERE Id_pedido = ? AND Id_usuario = ?
-    `;
+    const sqlPedido = `SELECT * FROM pedido WHERE Id_pedido = ? AND Id_usuario = ?`;
 
     db.query(sqlPedido, [idPedido, req.usuario.Id_usuario], (err, pedidoResult) => {
         if (err) return res.status(500).json({ success: false });
@@ -481,8 +441,8 @@ app.get("/pedido/:idPedido", verificarToken, (req, res) => {
         const sqlProductos = `
             SELECT pd.Id_producto, pd.Cantidad, pd.Precio,
                    p.Nombre, p.Descripcion, p.Imagen
-            FROM Pedido_Detalle pd
-            INNER JOIN Producto p ON p.Id_producto = pd.Id_producto
+            FROM pedido_detalle pd
+            INNER JOIN producto p ON p.Id_producto = pd.Id_producto
             WHERE pd.Id_pedido = ?
         `;
 
@@ -502,8 +462,8 @@ app.get("/pedido/:idPedido", verificarToken, (req, res) => {
 app.get("/resenas/:idProducto", (req, res) => {
     const sql = `
         SELECT r.*, u.Nombre AS NombreUsuario, u.Imagen AS FotoUsuario
-        FROM Resena r
-        INNER JOIN Usuario u ON u.Id_usuario = r.Id_usuario
+        FROM resena r
+        INNER JOIN usuario u ON u.Id_usuario = r.Id_usuario
         WHERE r.Id_producto = ?
         ORDER BY r.Fecha_resena DESC
     `;
@@ -519,7 +479,7 @@ app.post("/resena", verificarToken, (req, res) => {
     const { Id_producto, Comentario, Estrellas } = req.body;
 
     const sql = `
-        INSERT INTO Resena (Id_producto, Id_usuario, Comentario, Estrellas)
+        INSERT INTO resena (Id_producto, Id_usuario, Comentario, Estrellas)
         VALUES (?, ?, ?, ?)
     `;
 
@@ -534,7 +494,7 @@ app.put("/resena/:idResena", verificarToken, (req, res) => {
     const { Comentario, Estrellas } = req.body;
 
     const sql = `
-        UPDATE Resena
+        UPDATE resena
         SET Comentario = ?, Estrellas = ?
         WHERE Id_resena = ? AND Id_usuario = ?
     `;
@@ -548,7 +508,7 @@ app.put("/resena/:idResena", verificarToken, (req, res) => {
 // ===================== ELIMINAR RESEÑA =====================
 app.delete("/resena/:idResena", verificarToken, (req, res) => {
     const sql = `
-        DELETE FROM Resena
+        DELETE FROM resena
         WHERE Id_resena = ? AND Id_usuario = ?
     `;
 
@@ -682,6 +642,7 @@ app.post('/buscar_nombre', (req, res) => {
         });
     }
 });
+
 
 
 // ===================== PUERTO =====================
