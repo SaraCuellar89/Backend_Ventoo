@@ -104,7 +104,11 @@ app.post("/login", (req, res) => {
             { expiresIn: "7d" }
         );
 
-        res.json({ success: true, token });
+        res.json({
+            success: true,
+            usuario,
+            token
+        });
     });
 });
 
