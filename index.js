@@ -14,10 +14,10 @@ app.use(express.json());
 
 // ===================== BASE DE DATOS (POOL) =====================
 const db = mysql.createPool({
-    host: "tu_host_mysql",
-    user: "tu_usuario_mysql",
-    password: "tu_password_mysql",
-    database: "tu_base_mysql",
+    host: "mysql-base1cine.alwaysdata.net",
+    user: "base1cine_admin",
+    password: "contrasena_1234",
+    database: "base1cine_ventoo",
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
