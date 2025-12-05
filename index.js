@@ -6,153 +6,122 @@ const path = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
-
-
-
-
-// ===================== CONFIG =====================
-const JWT_SECRET = "1234";  // cámbialo en producción
 const app = express();
+const JWT_SECRET = "1234";
 
-app.use(cors({
-    origin: "*",      // React Web + React Native
-    credentials: false
-}));
-
-
+app.use(cors({ origin: "*", credentials: true }));
 app.use(express.json());
 
-
-
-
-
-// ===================== BD =====================
-const db = mysql.createConnection({
-    host: 'mysql-base1cine.alwaysdata.net',
-    user: 'base1cine_admin',
-    password: 'contrasena_1234',
-    database: 'base1cine_ventoo'
-});
-db.connect(err => {
-    if (err) return console.error("Error BD:", err);
-    console.log("MySQL conectado");
+// ===================== BASE DE DATOS (POOL) =====================
+const db = mysql.createPool({
+    host: "tu_host_mysql",
+    user: "tu_usuario_mysql",
+    password: "tu_password_mysql",
+    database: "tu_base_mysql",
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
+// SOLO ESTO: ya NO uses db.connect()
 
-
-// ===================== MIDDLEWARE JWT =====================
+// ===================== FUNCIÓN PARA VERIFICAR TOKEN =====================
 const verificarToken = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader)
-        return res.status(401).json({ success: false, message: "Token faltante" });
+    const token = req.headers["authorization"]?.split(" ")[1];
 
-    const token = authHeader.split(" ")[1];
+    if (!token) {
+        return res.status(401).json({ success: false, msg: "Acceso denegado. Falta token." });
+    }
 
-    jwt.verify(token, JWT_SECRET, (err, decoded) => {
-        if (err)
-            return res.status(403).json({ success: false, message: "Token inválido o expirado" });
-
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
         req.usuario = decoded;
         next();
-    });
+    } catch (err) {
+        return res.status(401).json({ success: false, msg: "Token inválido" });
+    }
 };
 
-
-
 // ===================== REGISTRO =====================
-app.post('/registro', (req, res) => {
-    const { nombre, correo, telefono, contrasena, rol } = req.body;
+app.post("/registro", async (req, res) => {
+    const { nombre, email, telefono, contrasena, rol } = req.body;
 
-    // Buscar si el usuario ya existe
-    db.query('SELECT * FROM usuario WHERE Email = ?', [correo], (err, resultados) => {
-        if (err) {
-            console.log("Error BD:", err);
-            return res.status(500).json({
-                success: false,
-                message: 'Error al consultar la base de datos'
-            });
-        }
+    try {
+        const hash = await bcrypt.hash(contrasena, 10);
 
-        if (resultados.length > 0) {
-            return res.status(200).json({
-                success: false,
-                message: 'Ese usuario ya existe'
-            });
-        }
-
-        // Hashear contraseña
-        const salt = bcrypt.genSaltSync(10);
-        const hashContrasena = bcrypt.hashSync(contrasena, salt);
-
-        // Insertar usuario
-        const query = `
-            INSERT INTO usuario (Nombre, Email, Telefono, Contrasena, Tipo_cliente)
+        const sql = `
+            INSERT INTO usuarios (Nombre, Email, Telefono, Contrasena, Rol)
             VALUES (?, ?, ?, ?, ?)
         `;
 
-        db.query(query, [nombre, correo, telefono, hashContrasena, rol], (err2, resultadoInsert) => {
-            if (err2) {
-                console.log("Error BD:", err2);
-                return res.status(500).json({
-                    success: false,
-                    message: 'No se pudo registrar al usuario'
-                });
+        db.query(sql, [nombre, email, telefono, hash, rol], (err, result) => {
+            if (err) {
+                console.error("Error BD:", err);
+                return res.status(500).json({ success: false, msg: "Error en la BD" });
             }
 
-            res.status(201).json({
-                success: true,
-                message: 'Usuario registrado con éxito',
-                idUsuario: resultadoInsert.insertId
-            });
+            res.json({ success: true, msg: "Usuario registrado" });
         });
-    });
+
+    } catch (error) {
+        console.error("Error:", error);
+        return res.status(500).json({ success: false, msg: "Error interno" });
+    }
 });
-
-
 
 // ===================== LOGIN =====================
 app.post("/login", (req, res) => {
     const { email, contrasena } = req.body;
 
-    db.query("SELECT * FROM usuario WHERE Email = ?", [email], async (err, results) => {
-        if (err) return res.status(500).json({ error: "Error servidor" });
-        if (results.length === 0) return res.status(401).json({ error: "Usuario no registrado" });
+    const sql = `SELECT * FROM usuarios WHERE Email = ?`;
 
-        const usuario = results[0];
-        const contraseñaIngresada = contrasena.trim();
+    db.query(sql, [email], async (err, result) => {
+        if (err) {
+            console.error("Error BD:", err);
+            return res.status(500).json({ success: false, msg: "Error en la BD" });
+        }
 
-        let hash = usuario.Contrasena;
-        if (hash.startsWith("$2y$")) hash = "$2a$" + hash.slice(4);
+        if (result.length === 0) {
+            return res.json({ success: false, msg: "Email no existe" });
+        }
 
-        const match = await bcrypt.compare(contraseñaIngresada, hash);
-        if (!match) return res.status(401).json({ error: "Contraseña incorrecta" });
+        const usuario = result[0];
+
+        const esValida = await bcrypt.compare(contrasena, usuario.Contrasena);
+
+        if (!esValida) {
+            return res.json({ success: false, msg: "Contraseña incorrecta" });
+        }
 
         const token = jwt.sign(
             {
                 Id_usuario: usuario.Id_usuario,
                 Nombre: usuario.Nombre,
                 Email: usuario.Email,
-                Rol: usuario.Tipo_cliente 
+                Rol: usuario.Rol,
             },
             JWT_SECRET,
             { expiresIn: "7d" }
         );
 
-        res.json({
-            success: true,
-            usuario,
-            token
-        });
+        res.json({ success: true, token });
     });
 });
 
-
-
-
 // ===================== USUARIO LOGUEADO =====================
 app.get("/usuario_logueado", verificarToken, (req, res) => {
-    res.json({ success: true, usuario: req.usuario });
+    const sql = `SELECT Id_usuario, Nombre, Email, Rol FROM usuarios WHERE Id_usuario = ?`;
+
+    db.query(sql, [req.usuario.Id_usuario], (err, result) => {
+        if (err) {
+            console.error("Error BD:", err);
+            return res.status(500).json({ success: false, msg: "Error en la BD" });
+        }
+
+        res.json({ success: true, usuario: result[0] });
+    });
 });
+
 
 
 
