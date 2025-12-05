@@ -50,7 +50,7 @@ app.post("/registro", async (req, res) => {
         const hash = await bcrypt.hash(contrasena, 10);
 
         const sql = `
-            INSERT INTO usuario (Nombre, Email, Telefono, Contrasena, Rol)
+            INSERT INTO usuario (Nombre, Email, Telefono, Contrasena, Tipo_cliente)
             VALUES (?, ?, ?, ?, ?)
         `;
 
@@ -69,36 +69,31 @@ app.post("/registro", async (req, res) => {
     }
 });
 
+
+
 // ===================== LOGIN =====================
 app.post("/login", (req, res) => {
     const { email, contrasena } = req.body;
 
-    const sql = `SELECT * FROM usuario WHERE Email = ?`;
+    db.query("SELECT * FROM Usuario WHERE Email = ?", [email], async (err, results) => {
+        if (err) return res.status(500).json({ error: "Error servidor" });
+        if (results.length === 0) return res.status(401).json({ error: "Usuario no registrado" });
 
-    db.query(sql, [email], async (err, result) => {
-        if (err) {
-            console.error("Error BD:", err);
-            return res.status(500).json({ success: false, msg: "Error en la BD" });
-        }
+        const usuario = results[0];
+        const contraseñaIngresada = contrasena.trim();
 
-        if (result.length === 0) {
-            return res.json({ success: false, msg: "Email no existe" });
-        }
+        let hash = usuario.Contrasena;
+        if (hash.startsWith("$2y$")) hash = "$2a$" + hash.slice(4);
 
-        const usuario = result[0];
-
-        const esValida = await bcrypt.compare(contrasena, usuario.Contrasena);
-
-        if (!esValida) {
-            return res.json({ success: false, msg: "Contraseña incorrecta" });
-        }
+        const match = await bcrypt.compare(contraseñaIngresada, hash);
+        if (!match) return res.status(401).json({ error: "Contraseña incorrecta" });
 
         const token = jwt.sign(
             {
                 Id_usuario: usuario.Id_usuario,
                 Nombre: usuario.Nombre,
                 Email: usuario.Email,
-                Rol: usuario.Rol,
+                Rol: usuario.Tipo_cliente 
             },
             JWT_SECRET,
             { expiresIn: "7d" }
@@ -112,19 +107,14 @@ app.post("/login", (req, res) => {
     });
 });
 
+
+
+
 // ===================== USUARIO LOGUEADO =====================
 app.get("/usuario_logueado", verificarToken, (req, res) => {
-    const sql = `SELECT Id_usuario, Nombre, Email, Rol FROM usuario WHERE Id_usuario = ?`;
-
-    db.query(sql, [req.usuario.Id_usuario], (err, result) => {
-        if (err) {
-            console.error("Error BD:", err);
-            return res.status(500).json({ success: false, msg: "Error en la BD" });
-        }
-
-        res.json({ success: true, usuario: result[0] });
-    });
+    res.json({ success: true, usuario: req.usuario });
 });
+
 
 
 
