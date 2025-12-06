@@ -112,7 +112,12 @@ app.post("/login", (req, res) => {
 
         res.json({
             success: true,
-            usuario,
+            usuario: {
+                Id_usuario: usuario.Id_usuario,
+                Nombre: usuario.Nombre,
+                Email: usuario.Email,
+                Rol: usuario.Tipo_cliente
+            },
             token
         });
     });
