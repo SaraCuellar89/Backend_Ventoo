@@ -8,10 +8,6 @@ const jwt = require("jsonwebtoken");
 const JWT_SECRET = "1234";  // cámbialo en producción
 const app = express();
 
-const allowedOrigins = [
-  "https://front-ventoo-pagina.vercel.app"
-];
-
 app.use(cors({
   origin: "*",      // React Web + React Native
     credentials: false
