@@ -8,22 +8,24 @@ const jwt = require("jsonwebtoken");
 const JWT_SECRET = "1234";  // cámbialo en producción
 const app = express();
 
+const allowedOrigins = [
+  "https://front-ventoo-pagina.vercel.app"
+];
+
 app.use(cors({
-    origin: (origin, callback) => {
-        // 👇 Apps móviles, Postman, curl
-        if (!origin) return callback(null, true);
+  origin: (origin, callback) => {
+    // Mobile apps, Postman, curl (no origin)
+    if (!origin) return callback(null, true);
 
-        if (allowedOrigins.includes(origin)) {
-            return callback(null, true);
-        }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
 
-        return callback(new Error("No permitido por CORS"));
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    return callback(new Error("No permitido por CORS"));
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
-
-app.options("*", cors());
 
 app.use(express.json());
 
