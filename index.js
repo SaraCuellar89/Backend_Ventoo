@@ -9,9 +9,21 @@ const JWT_SECRET = "1234";  // cámbialo en producción
 const app = express();
 
 app.use(cors({
-    origin: "*",      // React Web + React Native
-    credentials: false
+    origin: (origin, callback) => {
+        // 👇 Apps móviles, Postman, curl
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        return callback(new Error("No permitido por CORS"));
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
+app.options("*", cors());
 
 app.use(express.json());
 
