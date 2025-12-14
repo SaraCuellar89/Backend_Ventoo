@@ -43,6 +43,12 @@ const verificarToken = (req, res, next) => {
     });
 };
 
+
+app.get('/', (req, res) => {
+  res.send('✅ Backend Ventoo funcionando correctamente');
+});
+
+
 // ===================== REGISTRO =====================
 app.post("/registro", async (req, res) => {
     const { nombre, email, telefono, contrasena, rol } = req.body;
